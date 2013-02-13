@@ -1482,6 +1482,84 @@ pure fn each_permutation<T: Copy>(v: &[T], put: fn(ts: &[T]) -> bool) {
     }
 }
 
+/**
+ * Iterate over `r`-length subsequences of elements from `values`.
+ *
+ * Combinations are emitted in lexicographic sort order. So, if the input
+ * iterable is sorted, the combination tuples will be produced in sorted
+ * order.
+ *
+ * Elements are treated as unique based on their position, not on their
+ * value. So if the input elements are unique, there will be no repeat values
+ * in each combination.
+ *
+ * For a `values` vector of length *n*, the number of items emitted
+ * is *n! / r! / (n-r)!* when *0 <= r <= n* or zero when *r > n*.
+ *
+ * # Arguments
+ *
+ * * `values` - A vector of values from which the combinations are chosen
+ *
+ * * `r` - The length of the emitted combinations
+ *
+ * * `fun` - The function to iterate over the combinations
+ *
+ * # See also
+ *
+ * This function gleefully stolen from Python
+ * [`itertools.combinations`](http://docs.python.org/2/library/itertools.html#itertools.combinations).
+ */
+pub pure fn each_combination<T:Copy>(values : &[T], r : uint, fun : &fn(combo : &[T]) -> bool) {
+    let length          = values.len();
+    if r == 0 || r > length { return; }
+    let max_indices0    = length - r;
+    let mut indices     = vec::from_fn(r, |i| i);
+    let mut combination = vec::from_fn(r, |i| values[i]);
+    loop {
+        if !fun(combination) { return; }
+        // Increment the indices
+        let mut i = r - 1;
+        indices[i] += 1;
+        while i > 0 && indices[i] > max_indices0 + i {
+            // indices[i] now too large; decrement i, increment indices[i]
+            // and we'll fix up the following indices later
+            i -= 1;
+            indices[i] += 1;
+        }
+        // Can't fix up 'done'
+        if indices[0] > max_indices0 { break; }
+        // Fix up the indices and the combination from i to r-1
+        combination[i] = values[indices[i]];
+        for uint::range(i + 1, r) |i| {
+            indices[i] = indices[i-1] + 1;
+            combination[i] = values[indices[i]];
+        }
+    }
+}
+
+/**
+ * Iterate over `r`-length subsequences of elements from `values`.
+ *
+ * This is an alternative to each_combination that uses references to
+ * avoid copying the elements of the values vector.
+ * 
+ * To avoid memory allocations and copying, the iterator will be
+ * passed a reference to a vector containing references to the
+ * elements in the original `values` vector.
+ *
+ * # Arguments
+ *
+ * * `values` - A vector of values from which the combinations are
+ * chosen
+ *
+ * * `r` - The length of the emitted combinations
+ *
+ * * `fun` - The function to iterate over the combinations
+ */
+pub pure fn each_combination_ref<T>(values : &v/[T], r : uint, fun : &fn(combo : &[&v/T]) -> bool) {
+    each_combination(vec::from_fn(values.len(), |i| &values[i]), r, fun);
+}
+
 pub pure fn windowed<TT: Copy>(nn: uint, xx: &[TT]) -> ~[~[TT]] {
     let mut ww = ~[];
     assert 1u <= nn;
@@ -3993,6 +4071,102 @@ mod tests {
             let b = [1, 2, 3, 4, 5];
             raw::copy_memory(a, b, 5);
         }
+    }
+
+    #[test]
+    fn test_combination_zero() {
+        let values = [1,2,3,4];
+        let mut v : ~[~[int]] = ~[];
+        for each_combination(values,0) |p| { v.push(vec::from_slice(p)); }
+        assert v == ~[];
+    }
+
+    #[test]
+    fn test_combination_zero_ref() {
+        let values = [1,2,3,4];
+        let mut v : ~[~[int]] = ~[];
+        for each_combination_ref(values,0) |p| { v.push(dup(p)); }
+        assert v == ~[];
+    }
+
+    #[test]
+    fn test_combination_one() {
+        let values = [1,2,3,4];
+        let mut v : ~[~[int]] = ~[];
+        for each_combination(values,1) |p| {
+            v.push(vec::from_slice(p));
+        }
+        assert v == ~[~[1],~[2],~[3],~[4]];
+    }
+
+    #[test]
+    fn test_combination_one_ref() {
+        let values = [1,2,3,4];
+        let mut v : ~[~[int]] = ~[];
+        for each_combination_ref(values,1) |p| {
+            v.push(dup(p));
+        }
+        assert v == ~[~[1],~[2],~[3],~[4]];
+    }
+
+    #[test]
+    fn test_combination_two() {
+        let values = [1,2,3,4];
+        let mut v : ~[~[int]] = ~[];
+        for each_combination(values,2) |p| {
+            v.push(vec::from_slice(p));
+        }
+        assert v == ~[~[1,2],~[1,3],~[1,4],~[2,3],~[2,4],~[3,4]];
+    }
+
+    #[test]
+    fn test_combination_two_ref() {
+        let values = [1,2,3,4];
+        let mut v : ~[~[int]] = ~[];
+        for each_combination_ref(values,2) |p| {
+            v.push(dup(p));
+        }
+        assert v == ~[~[1,2],~[1,3],~[1,4],~[2,3],~[2,4],~[3,4]];
+    }
+
+    #[test]
+    fn test_combination_three() {
+        let values = [1,2,3,4];
+        let mut v : ~[~[int]] = ~[];
+        for each_combination(values,3) |p| {
+            v.push(vec::from_slice(p));
+        }
+        assert v == ~[~[1,2,3],~[1,2,4],~[1,3,4],~[2,3,4]];
+    }
+
+    #[test]
+    fn test_combination_three_ref() {
+        let values = [1,2,3,4];
+        let mut v : ~[~[int]] = ~[];
+        for each_combination_ref(values,3) |p| {
+            v.push(dup(p));
+        }
+        assert v == ~[~[1,2,3],~[1,2,4],~[1,3,4],~[2,3,4]];
+    }
+
+    #[test]
+    fn test_combination_four() {
+        let values = [1,2,3,4];
+        let mut v : ~[~[int]] = ~[];
+        for each_combination(values,4) |p| {
+            v.push(vec::from_slice(p));
+        }
+        assert v == ~[~[1,2,3,4]];
+    }
+
+    #[test]
+    fn test_combination_four_ref() {
+        let values = [1,2,3,4];
+        let mut v : ~[~[int]] = ~[];
+        for each_combination_ref(values,4) |p| {
+            v.push(dup(p));
+        }
+        assert v == ~[~[1,2,3,4]];
     }
 
 }
